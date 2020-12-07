@@ -1,0 +1,76 @@
+ //////////////////////////////////////////////
+/*
+
+printf("Before execution\n");
+printf("Row1_1:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row1_1[z]);
+}
+printf("\n");
+
+printf("Row1_2:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row1_2[z]);
+}
+printf("\n");
+
+printf("Row1_3:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row1_3[z]);
+}
+printf("\n");
+
+printf("Row2_1:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row2_1[z]);
+}
+printf("\n");
+
+printf("Row2_2:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row2_2[z]);
+}
+printf("\n");
+
+printf("Row2_3:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row2_3[z]);
+}
+printf("\n");
+
+printf("Row3_1:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row3_1[z]);
+}
+printf("\n");
+
+printf("Row3_2:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row3_2[z]);
+}
+printf("\n");
+
+printf("Row3_3:\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", row3_3[z]);
+}
+printf("\n");
+
+printf("Accumulators\n");
+for (z=0; z < 8; z++)
+{
+    printf("%f, ", accumulators[z]);
+}
+printf("\n");
+
+*/
+//////////////////////////////////////////////

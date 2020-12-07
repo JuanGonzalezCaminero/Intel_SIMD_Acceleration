@@ -1,0 +1,9 @@
+#!/bin/bash
+a=$1
+b=$2
+if cmp -s $a $b
+then
+   echo "OK"
+else 
+  echo "ERROR"
+fi

@@ -41,6 +41,7 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <unistd.h>
+#include "ctimer.h"
 
 static double nofirstcall = 0.0;
 

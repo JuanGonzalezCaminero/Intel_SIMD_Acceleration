@@ -1,34 +1,37 @@
-INCLUDE_DIRS = 
-LIB_DIRS = 
-CC = gcc
+#CC = gcc
+.PHONY: check
 
-CDEFS=
-#CFLAGS= -O0 $(INCLUDE_DIRS) $(CDEFS)
-#CFLAGS= -O0 -msse3 -malign-double $(INCLUDE_DIRS) $(CDEFS)
-#CFLAGS= -O2 -msse3 -malign-double $(INCLUDE_DIRS) $(CDEFS)
-#CFLAGS= -O3 $(INCLUDE_DIRS) $(CDEFS)
-CFLAGS= -O3 -msse3 $(INCLUDE_DIRS) $(CDEFS)
-#CFLAGS= -O3 -mssse3 $(INCLUDE_DIRS) $(CDEFS)
-LIBS=
+CFLAGS= -O3
 
-PRODUCT=sharpen
+all: 
+	icc -O3 -o sharpen_t sharpen_t.c ctimer.c
+	icc -O3 -o sharpen_t_AVX sharpen_t_AVX.c ctimer.c
+	#icc -O3 -g -o testing testing.c
+	icc -O0 -g -o testing testing.c
 
-HFILES= 
-CFILES= sharpen.c
+all_gcc: 
+	gcc -O3 -o sharpen_t sharpen_t.c ctimer.c
+	gcc -O3 -mavx -o sharpen_t_AVX sharpen_t_AVX.c ctimer.c
+	#icc -O3 -g -o testing testing.c
+	gcc -O0 -g -mavx -o testing testing.c
 
-SRCS= ${HFILES} ${CFILES}
-OBJS= ${CFILES:.c=.o}
+debug:
+	icc -O0 -g -o sharpen_t_AVX sharpen_t_AVX.c ctimer.c
 
-all:	${PRODUCT}
+run:
+	./sharpen_t sunset.ppm
+	./sharpen_t_AVX sunset.ppm
 
-clean:
-	-rm -f *.o *.NEW *~
-	-rm -f ${PRODUCT} ${DERIVED} ${GARBAGE}
+run_avx:
+	./sharpen_t_AVX sunset.ppm
 
-${PRODUCT}:	${OBJS}
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
+run_testing:
+	./testing
 
-depend:
+ref:
+	./sharpen_t sunset.ppm
+	mv sharpen.ppm reference.ppm
 
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+check:
+	./sharpen_t_AVX sunset.ppm
+	./check reference.ppm sharpen.ppm

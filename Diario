@@ -1,0 +1,501 @@
+
+Makefile con lo típico para compilar, comparar, validar, etc.
+
+Fichero separado para instrucciones AVX.
+
+Problemas identificados:
+-Se accede a tres matrices distintas de forma intercalada, de forma que lo que se 
+carga en la caché para una matriz no se utiliza para las otras dos. Para cada píxel 
+de la imágen, se accede a cada una de las matrices.
+
+-Los accesos a las matrices no son óptimos. Para cada píxel, se accede a tres filas 
+de la matriz, cargando tres elementos de cada fila.
+
+-Primera prueba:
+Reestructurar los accesos de forma que cada color se procese por completo por 
+separado, para evitar cambiar entre matrices contínuamente. Los accesos siguen 
+sin ser óptimos, pero hay datos que se usan en iteraciones consecutivas, por lo 
+que debería aprovecharse mejor la caché.
+
+El tiempo mejora algo:
+./sharpen_t sunset.ppm
+Tiempo: 0.614525s (real) 0.061000s (cpu) 0.000000s (sys)
+./sharpen_t_AVX sunset.ppm
+Tiempo: 0.568784s (real) 0.057000s (cpu) 0.000000s (sys)
+
+-Segunda prueba:
+Parece complicado optimizar los accesos a las matrices en el sentido de que todos los 
+datos que se lean/escriban sean consecutivos en memoria. Una posible mejora, sin embargo, 
+puede ser desplegar los bucles, de forma que se procesen varios píxeles en cada iteración. 
+Así, de cada línea de cargarán 3,4,5... elementos en función de cuántas iteraciones 
+despleguemos.
+
+Desplegando dos iteraciones en un único color el tiempo empeora, sin embargo, para hacer 
+esto también ha sido necesario incluir comprobaciones adicionales. Para la siguiente versión, 
+pondré bucles internamente para cada fila, de forma que cada bucle recorra varios píxels 
+de esa fila.
+
+Esto empeora los tiempos (0.11 en tiempo real con los mejores tamaños de unroll desplegando 
+sólo un color (32,64)) Sin embargo, esto también permite ahora introducir instrucciones 
+vectoriales que encajen correctamente con el número de multiplicaciones que hay que hacer.
+
+Veo que si se despliegan las iteraciones manualmente, en vez de usar bucles, el tiempo empeora, 
+pero mucho menos (0.088s desplegando 8 iteraciones)
+
+El mínimo común múltiplo de 3 y 8 es 24, lo que corresponde a desplegar 8 iteraciones.
+
+-Tercera prueba:
+Desplegando de forma manual 8 iteraciones, por el momento, voy a introducir operaciones AVX para 
+sustituirlo. Si el tiempo mejora de esta forma, puedo usar el despliegue con bucles para buscar el 
+número de iteraciones desplegadas más óptimo.
+
+Para introducir AVX, ya que cada grupo de 8 operaciones, en el orden en el que se hacen normalmente, 
+afecta a diferentes acumuladores e índices dentro de las filas, creo que una buena forma de hacerlo 
+sería hacer a la vez las 8 multiplicaciones correspondientes a cada posición del kernel. Es decir, 
+si el kernel es:
+a|b|c
+d|e|f
+g|h|i
+
+La zona de la imágen a la que afectan esas 8 iteraciones:
+1a|2a|3a|4a|5a|6a|7a|8a|9a|10a
+1b|2b|3b|4b|5b|6b|7b|8b|9b|10b
+1c|2c|3c|4c|5c|6c|7c|8c|9c|10c
+
+Los acumuladores correspondientes a esa posición denotados con una a seguida del nombre de la posición
+
+Por último, las posiciones correspondientes en la matriz de destino (convolucionada) denotadas por una c
+
+Las operaciones que haría serían:
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(a, a, a, a, a, a, a, a, a, a)*(1a, 2a, 3a, 4a, 5a, 6a, 7a, 8a)
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(b, b, b, b, b, b, b, b, b, b)*(2a, 3a, 4a, 5a, 6a, 7a, 8a, 9a)
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(c, c, c, c, c, c, c, c, c, c)*(3a, 4a, 5a, 6a, 7a, 8a, 9a, 10a)
+
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(d, d, d, d, d, d, d, d, d, d)*(1b, 2b, 3b, 4b, 5b, 6b, 7b, 8b)
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(e, e, e, e, e, e, e, e, e, e)*(2b, 3b, 4b, 5b, 6b, 7b, 8b, 9b)
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(f, f, f, f, f, f, f, f, f, f)*(3b, 4b, 5b, 6b, 7b, 8b, 9b, 10b)
+
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(g, g, g, g, g, g, g, g, g, g)*(1c, 2c, 3c, 4c, 5c, 6c, 7c, 8c)
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(h, h, h, h, h, h, h, h, h, h)*(2c, 3c, 4c, 5c, 6c, 7c, 8c, 9c)
+(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)+=(i, i, i, i, i, i, i, i, i, i)*(3c, 4c, 5c, 6c, 7c, 8c, 9c, 10c)
+
+(c2b, c3b, c4b, c5b, c6b, c7b, c8b, c9b)=(a2b, a3b, a4b, a5b, a6b, a7b, a8b, a9b)
+
+Como sólo hay 16 registros AVX, no almacenaré cada uno de los vectores de "kernel" (los que tienen todas las 
+posiciones repetidas, símplemente crearé el registro repitiendo caracteres para cada operación)
+
+Sí que parece buena idea mantener los acumuladores siempre cargados en un registro. Además, podemos sustituir 
+el registro de acumuladores por las posiciones de la matriz de destino. Inicialmente usaré acumuladores, y 
+después comprobaré si el rendimiento mejora usando directamente la matriz de destino.
+
+Para esta primera implementación, cargaré inicialmente cada línea de la imágen y crearé los tres registros que 
+se usan por línea.
+
+Como lo que hay en la imágen son ints de 8 bits, y en el programa original se castean a doubles, no nos 
+cabrían 8 elementos en cada registro. De momento, voy a probar a usar floats para las operaciones, sólo 
+por ver si se obtiene un resultado similar, y más adelante pasarlo a doubles, que es más complejo.
+
+Para cargarlo de forma correcta necesitamos una instrucción como _mm256_cvtepu8_epi32, que extiende ints 
+de 8 bits a 32 con ceros.
+
+En concreto, si queremos cargar 8 ints de 8 bits de la imágen a un registro de 256 bits como floats, necesitamos:
+
+__m128i _mm_loadu_si64 (void const* mem_addr):
+Carga 64 bits de memoria en las direcciones 0-63 de un registro de 128 bits.
+
+__m256i _mm256_cvtepu8_epi32 (__m128i a):
+Extiende con ceros a 32 bits los 8 ints de 8 bytes almacenados en las direcciones 0-63 del registro a, y los 
+almacena en un registro de 256 bits.
+
+__m256 _mm256_castsi256_ps (__m256i a):
+Casteo de registro de ints a registro de floats de 32 bits.
+
+Un problema de esto es que sólo funciona en máquinas con soporte para AVX2. Probablemente sea posible hacerlo de 
+otra forma, con un array normal de floats en el que almacenamos los números, y cargar ese array en un registro de 
+256.
+
+###################
+Inciso:
+Si se usan floats en vez de doubles para las operaciones, el resultado es el mismo, y el programa tarda casi la mitad 
+de tiempo en ejecutarse. De momento voy a usar floats, ya que es mucho más fácil con AVX y el resultado es el mismo. 
+###################
+
+Finalmente consigo un código que funciona en la primera iteración, pero produce resultados incorrectos en las siguientes, 
+y da segfaults al azar, que cambian según los prints que tengas en el programa.
+
+-Cuarta prueba:
+Por no dejar nada por probar, pruebo, en un bucle normal, a hacer las 8 primeras multiplicaciones usando instrucciones 
+AVX, y la última dejarla igual. Para ello primero cargo en sendos registros tanto las 8 primeras posiciones del kernel 
+como los 8 elementos de la matriz correspondientes.
+El código final funciona, pero es muy lento.
+
+-Quinta prueba:
+Vuelvo al bucle que despliega 8 iteraciones para intentar determinar por qué es más lento que el original, usando 
+valgrind --tool=cachegrind.
+
+Valgrind falla con el mensaje "illegal opcode at address ..." al ejecutar tanto el programa base como el modificado 
+en knights. Parece que sólo funciona si usamos gcc, que también hace los programas mucho más lentos.
+Los resultados son:
+
+Programa base:
+
+==2718== I   refs:      5,927,380,257
+==2718== I1  misses:              899
+==2718== LLi misses:              892
+==2718== I1  miss rate:          0.00%
+==2718== LLi miss rate:          0.00%
+==2718== 
+==2718== D   refs:      1,210,061,011  (1,058,053,219 rd   + 152,007,792 wr)
+==2718== D1  misses:        3,586,258  (    1,800,919 rd   +   1,785,339 wr)
+==2718== LLd misses:            8,127  (        4,283 rd   +       3,844 wr)
+==2718== D1  miss rate:           0.2% (          0.1%     +         1.1%  )
+==2718== LLd miss rate:           0.0% (          0.0%     +         0.0%  )
+==2718== 
+==2718== LL refs:           3,587,157  (    1,801,818 rd   +   1,785,339 wr)
+==2718== LL misses:             9,019  (        5,175 rd   +       3,844 wr)
+==2718== LL miss rate:            0.0% (          0.0%     +         0.0%  )
+
+Programa base tratando cada color por separado:
+
+==2776== I   refs:      5,775,659,567
+==2776== I1  misses:            1,035
+==2776== LLi misses:            1,023
+==2776== I1  miss rate:          0.00%
+==2776== LLi miss rate:          0.00%
+==2776== 
+==2776== D   refs:      1,023,457,935  (909,377,152 rd   + 114,080,783 wr)
+==2776== D1  misses:        3,589,447  (  1,802,555 rd   +   1,786,892 wr)
+==2776== LLd misses:            8,983  (      5,100 rd   +       3,883 wr)
+==2776== D1  miss rate:           0.3% (        0.1%     +         1.5%  )
+==2776== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==2776== 
+==2776== LL refs:           3,590,482  (  1,803,590 rd   +   1,786,892 wr)
+==2776== LL misses:            10,006  (      6,123 rd   +       3,883 wr)
+==2776== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+Programa con unrolling de 8 iteraciones:
+
+==2682== I   refs:      6,288,389,952
+==2682== I1  misses:            1,051
+==2682== LLi misses:            1,038
+==2682== I1  miss rate:          0.00%
+==2682== LLi miss rate:          0.00%
+==2682== 
+==2682== D   refs:      1,560,638,877  (1,284,437,968 rd   + 276,200,909 wr)
+==2682== D1  misses:        3,592,940  (    1,805,048 rd   +   1,787,892 wr)
+==2682== LLd misses:            8,983  (        5,100 rd   +       3,883 wr)
+==2682== D1  miss rate:           0.2% (          0.1%     +         0.6%  )
+==2682== LLd miss rate:           0.0% (          0.0%     +         0.0%  )
+==2682== 
+==2682== LL refs:           3,593,991  (    1,806,099 rd   +   1,787,892 wr)
+==2682== LL misses:            10,021  (        6,138 rd   +       3,883 wr)
+==2682== LL miss rate:            0.0% (          0.0%     +         0.0%  )
+
+I y D: Cachés de Instrucciones y Datos de primer nivel.
+LL: Caché del nivel más bajo.
+
+Vemos que el programa original, sorprendentemente, tiene menor número de fallos en D y LL que las otras versiones. La tasa 
+de fallos es muy similar entre versiones.
+Vemos también que el segundo programa tiene menos referencias a datos que el original, y que la versión con unrolling 
+hace más referencias que las otras dos. Ocurre lo mismo con las referencias a instrucciones.
+
+Por estos resultados, sólo puedo concluir que la mejora de tiempo respecto al programa base en el caso del segundo programa 
+se debe a este menor número de referencias a datos e instrucciones, mientras que el peor tiempo en el caso del programa con 
+unrolling respecto al programa base se debe a esos mayores números en ambos casos.
+
+Sin embargo, es curioso ya que en principio el número de accesos a memoria debería ser muy similar en todos los casos, 
+mientras que, a priori, lo que variaría sería la tasa de fallos.
+
+Una posibilidad es que este número de referencias se reduzca por las optimizaciones del compilador. En el segundo 
+programa, cada iteración usa 6 elementos de la imágen que ya habían sido usados por la iteración anterior, es decir, 
+si la imágen es:
+a b c d
+e f g h
+i j k l
+La primera iteración usaría:
+a b c 
+e f g 
+i j k 
+Y la siguiente:
+b c d 
+f g h 
+j k l 
+Si el compilador almacena b c f g j k en registros, nos ahorraríamos esas referencias por parte de la segunda iteración.
+
+Esto podría pasar también en la versión base del programa, pero lo más probable es que el procesador no tenga suficientes 
+registros para almacenar los 18 valores que se reutilizarían entre iteraciones.
+
+En el caso de la versión con unrolling, al procesar cada línea por separado, no podemos aprovechar ningún valor entre 
+iteraciones, ya que, por ejemplo, los dos valores al final de la primera línea que se reutilizarían en la siguiente 
+iteración van a ser reemplazados durante el procesamiento de las dos líneas siguientes.
+
+Una versión del programa con unrolling en el que símplemente se copia 8 veces lo que se haría en una iteración normal, 
+en lugar de procesar la imágen por filas, hace menos referencias pero sigue siendo un peor resultado que en los otros 
+dos programas, vemos que la disminución es mayor en el número de escrituras:
+==3413== I   refs:      6,142,064,488
+==3413== I1  misses:            1,028
+==3413== LLi misses:            1,016
+==3413== I1  miss rate:          0.00%
+==3413== LLi miss rate:          0.00%
+==3413== 
+==3413== D   refs:      1,442,578,929  (1,242,391,698 rd   + 200,187,231 wr)
+==3413== D1  misses:        3,591,441  (    1,804,048 rd   +   1,787,393 wr)
+==3413== LLd misses:            8,982  (        5,099 rd   +       3,883 wr)
+==3413== D1  miss rate:           0.2% (          0.1%     +         0.8%  )
+==3413== LLd miss rate:           0.0% (          0.0%     +         0.0%  )
+==3413== 
+==3413== LL refs:           3,592,469  (    1,805,076 rd   +   1,787,393 wr)
+==3413== LL misses:             9,998  (        6,115 rd   +       3,883 wr)
+==3413== LL miss rate:            0.0% (          0.0%     +         0.0%  )
+
+¿Que es lo que se pretende mejorar?
+Programa base:
+Asumimos que algunos datos pueden almacenarse en registros y reutilizarse entre iteraciones, pero no de forma óptima.
+Segundo programa:
+Cada columna de 3 datos se reutiliza en tres iteraciones. Este es el número máximo de reutilizaciones para un dato 
+si procesamos las imágenes de esta forma (Vamos cargando de 3 líneas simutáneamente y escribiendo en una).
+
+-Sexta prueba:
+Ya que parece que cargar de varias líneas a la vez no es el problema, dado que la tasa de fallos de caché es muy baja 
+en todos los casos, decido intentar procesar más líneas a la vez, aumentando el número de elementos que pueden quedarse 
+cargados entre iteraciones. Este es el resultado procesando dos líneas, es decir, cargamos de 4 líneas en vez de 3, y 
+almacenamos en dos:
+==3987== I   refs:      5,623,710,272
+==3987== I1  misses:            1,025
+==3987== LLi misses:            1,013
+==3987== I1  miss rate:          0.00%
+==3987== LLi miss rate:          0.00%
+==3987== 
+==3987== D   refs:      1,022,549,677  (880,399,143 rd   + 142,150,534 wr)
+==3987== D1  misses:        3,589,447  (  1,802,555 rd   +   1,786,892 wr)
+==3987== LLd misses:            8,982  (      5,099 rd   +       3,883 wr)
+==3987== D1  miss rate:           0.3% (        0.2%     +         1.2%  )
+==3987== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==3987== 
+==3987== LL refs:           3,590,472  (  1,803,580 rd   +   1,786,892 wr)
+==3987== LL misses:             9,995  (      6,112 rd   +       3,883 wr)
+==3987== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+El número de referencias baja un poco, aunque por lo demás casi todo sigue igual.
+
+Procesando 3 líneas por iteración:
+==4359== I   refs:      5,742,593,877
+==4359== I1  misses:            1,008
+==4359== LLi misses:              997
+==4359== I1  miss rate:          0.00%
+==4359== LLi miss rate:          0.00%
+==4359== 
+==4359== D   refs:        958,247,484  (844,324,930 rd   + 113,922,554 wr)
+==4359== D1  misses:        3,584,955  (  1,800,558 rd   +   1,784,397 wr)
+==4359== LLd misses:            8,982  (      5,099 rd   +       3,883 wr)
+==4359== D1  miss rate:           0.3% (        0.2%     +         1.5%  )
+==4359== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==4359== 
+==4359== LL refs:           3,585,963  (  1,801,566 rd   +   1,784,397 wr)
+==4359== LL misses:             9,979  (      6,096 rd   +       3,883 wr)
+==4359== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+En este caso vemos un mayor descenso en el número de referencias a datos, aunque el de instrucciones aumenta.
+
+Vemos también una pequeña mejora en el tiempo de ejecución.
+
+Procesando 4 líneas por iteración:
+==4799== I   refs:      5,324,794,692
+==4799== I1  misses:            1,026
+==4799== LLi misses:            1,014
+==4799== I1  miss rate:          0.00%
+==4799== LLi miss rate:          0.00%
+==4799== 
+==4799== D   refs:        965,976,507  (833,171,289 rd   + 132,805,218 wr)
+==4799== D1  misses:        3,589,446  (  1,802,554 rd   +   1,786,892 wr)
+==4799== LLd misses:            8,982  (      5,099 rd   +       3,883 wr)
+==4799== D1  miss rate:           0.3% (        0.2%     +         1.3%  )
+==4799== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==4799== 
+==4799== LL refs:           3,590,472  (  1,803,580 rd   +   1,786,892 wr)
+==4799== LL misses:             9,996  (      6,113 rd   +       3,883 wr)
+==4799== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+El número de referencias a datos sube un poco, pero el de referencias a instrucciones se reduce drásticamente.
+
+Procesando 4 líneas, tenemos un total de 36 operaciones por iteración, y 4 acumuladores, por tanto, se puede intentar 
+usar operaciones SSE.
+
+Para hacer esto, tenemos que reordenar las operaciones de forma que realizemos en cada grupo 4 operaciones que afecten 
+al mismo elemento del kernel y a los 4 acumuladores. Esto nos lleva a que cada registro almacene 4 elementos en 
+columna, con un total de 27 elementos almacenados en registros para los 18 elementos que tenemos realmente en un área 
+de 6*3 en la matriz. En cada iteración, antes podíamos reutilizar 12 elementos, lo que se traduce en reutilizar los 
+6 registros SSE de la derecha en este caso.
+
+De forma más visual:
+a b c 
+d e f 
+g h i 
+j k l 
+m n o 
+p q r 
+
+Los acumuladores corresponden a las posiciones e h k n. Tenemos 9 registros SSE en total para almacenar los valores 
+necesarios:
+1: a d g j 
+2: d g j m 
+3: g j m p 
+4: b e h k 
+5: e h k n 
+6: h k n q 
+7: c f i l 
+8: f i l o 
+9: i l o r 
+
+De los cuales reutilizamos los registros 4 a 9 para la siguiente iteración.
+
+Las operaciones son, siendo el registro de acumuladores a1 a2 a3 a4, y los elementos del kernel kn:
+(a1 a2 a3 a4) += (k0 k0 k0 k0)*(a d g j)
+(a1 a2 a3 a4) += (k1 k1 k1 k1)*(b e k h)
+(a1 a2 a3 a4) += (k2 k2 k2 k2)*(c f i l)
+
+(a1 a2 a3 a4) += (k3 k3 k3 k3)*(d g j m)
+(a1 a2 a3 a4) += (k4 k4 k4 k4)*(e h k n)
+(a1 a2 a3 a4) += (k5 k5 k5 k5)*(f i l o)
+
+(a1 a2 a3 a4) += (k6 k6 k6 k6)*(g j m p)
+(a1 a2 a3 a4) += (k7 k7 k7 k7)*(h k n q)
+(a1 a2 a3 a4) += (k8 k8 k8 k8)*(i l o r)
+
+Una vez implementado el procesamiento del color rojo de esta manera, valgrind da el siguiente resultado:
+==16973== I   refs:      4,419,167,605
+==16973== I1  misses:            1,026
+==16973== LLi misses:            1,014
+==16973== I1  miss rate:          0.00%
+==16973== LLi miss rate:          0.00%
+==16973== 
+==16973== D   refs:        891,739,366  (768,369,690 rd   + 123,369,676 wr)
+==16973== D1  misses:        3,591,446  (  1,803,554 rd   +   1,787,892 wr)
+==16973== LLd misses:            8,985  (      5,100 rd   +       3,885 wr)
+==16973== D1  miss rate:           0.4% (        0.2%     +         1.4%  )
+==16973== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==16973== 
+==16973== LL refs:           3,592,472  (  1,804,580 rd   +   1,787,892 wr)
+==16973== LL misses:             9,999  (      6,114 rd   +       3,885 wr)
+==16973== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+Tanto el número de referencias a instrucciones como a datos se ha reducido de forma significativa respecto a 
+la mejor versión hasta ahora, la que trata cada color por separado, sin embargo, los tiempos son prácticamente 
+iguales.
+
+Una vez pasamos a tratar todo de esta forma:
+
+==17328== I   refs:      2,332,200,398
+==17328== I1  misses:            1,051
+==17328== LLi misses:            1,039
+==17328== I1  miss rate:          0.00%
+==17328== LLi miss rate:          0.00%
+==17328== 
+==17328== D   refs:        659,077,126  (516,983,472 rd   + 142,093,654 wr)
+==17328== D1  misses:        3,589,448  (  1,802,552 rd   +   1,786,896 wr)
+==17328== LLd misses:            8,984  (      5,100 rd   +       3,884 wr)
+==17328== D1  miss rate:           0.5% (        0.3%     +         1.2%  )
+==17328== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==17328== 
+==17328== LL refs:           3,590,499  (  1,803,603 rd   +   1,786,896 wr)
+==17328== LL misses:            10,023  (      6,139 rd   +       3,884 wr)
+==17328== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+Como referencia, esta es la salida de valgrind para la versión que trata cada color por separado con los 
+bucles originales:
+
+==2776== I   refs:      5,775,659,567
+==2776== I1  misses:            1,035
+==2776== LLi misses:            1,023
+==2776== I1  miss rate:          0.00%
+==2776== LLi miss rate:          0.00%
+==2776== 
+==2776== D   refs:      1,023,457,935  (909,377,152 rd   + 114,080,783 wr)
+==2776== D1  misses:        3,589,447  (  1,802,555 rd   +   1,786,892 wr)
+==2776== LLd misses:            8,983  (      5,100 rd   +       3,883 wr)
+==2776== D1  miss rate:           0.3% (        0.1%     +         1.5%  )
+==2776== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==2776== 
+==2776== LL refs:           3,590,482  (  1,803,590 rd   +   1,786,892 wr)
+==2776== LL misses:            10,006  (      6,123 rd   +       3,883 wr)
+==2776== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+Sin embargo, el tiempo es exáctamente igual.
+
+Por otro lado, la versión secuencial del unroll de 4 filas obtiene un mejor tiempo que estas dos versiones, y 
+su salida de valgrind es:
+
+==17861== I   refs:      5,239,123,106
+==17861== I1  misses:            1,080
+==17861== LLi misses:            1,066
+==17861== I1  miss rate:          0.00%
+==17861== LLi miss rate:          0.00%
+==17861== 
+==17861== D   refs:      1,750,214,517  (1,439,597,577 rd   + 310,616,940 wr)
+==17861== D1  misses:        3,589,447  (    1,802,556 rd   +   1,786,891 wr)
+==17861== LLd misses:            8,983  (        5,100 rd   +       3,883 wr)
+==17861== D1  miss rate:           0.2% (          0.1%     +         0.5%  )
+==17861== LLd miss rate:           0.0% (          0.0%     +         0.0%  )
+==17861== 
+==17861== LL refs:           3,590,527  (    1,803,636 rd   +   1,786,891 wr)
+==17861== LL misses:            10,049  (        6,166 rd   +       3,883 wr)
+==17861== LL miss rate:            0.0% (          0.0%     +         0.0%  )
+
+Lo cual no parece tener sentido, con un número mucho mayor de referencias a datos que las otras dos.
+
+En la versión con SSE, si en vez de cargar cada posición del kernel con un set_ps1 para cada operación nos 
+aprovechamos de que el kernel sólo contiene dos valores diferentes, de manera que los cargamos en sendos 
+registros para toda la ejecución, el tiempo mejora (de 0.3 a 0.29), y el valgrind:
+
+==18589== I   refs:      2,220,033,540
+==18589== I1  misses:            1,068
+==18589== LLi misses:            1,055
+==18589== I1  miss rate:          0.00%
+==18589== LLi miss rate:          0.00%
+==18589== 
+==18589== D   refs:        462,473,217  (320,376,543 rd   + 142,096,674 wr)
+==18589== D1  misses:        3,590,437  (  1,805,046 rd   +   1,785,391 wr)
+==18589== LLd misses:            8,982  (      5,099 rd   +       3,883 wr)
+==18589== D1  miss rate:           0.7% (        0.5%     +         1.2%  )
+==18589== LLd miss rate:           0.0% (        0.0%     +         0.0%  )
+==18589== 
+==18589== LL refs:           3,591,505  (  1,806,114 rd   +   1,785,391 wr)
+==18589== LL misses:            10,037  (      6,154 rd   +       3,883 wr)
+==18589== LL miss rate:            0.0% (        0.0%     +         0.0%  )
+
+Una gran mejora en las referencias a datos, pero el tiempo sigue lejos del 0.25 que consigue la versión 
+secuencial.
+
+Si paso a usar AVX, y procesar 8 filas cada vez, paso a obtener tiempos de alrededor de 0.26 segundos.
+
+Si, en lugar de hacer set_ps para cargar los datos, se copia primero a una matriz auxiliar, y se carga de 
+ahí, el tiempo baja a 0.24 segundos.
+
+
+Se pueden eliminar varias multiplicaciones por iteración si tenemos en cuenta que las que corresponden a las filas 
+superior e inferior darán el mismo resultado en todas las iteraciones, al multiplicarse siempre por el mismo valor. 
+Sin embargo, el rendimiento empeora. La explicación más probable es que, por defecto, el compilador puede sustituir 
+una suma y una multiplicación separadas por una operación FMA, más eficiente, por lo que aunque quitemos alguna 
+multiplicación no ganamos rendimiento.
+
+Al cargar los datos de una matriz auxiliar, para seguir cargando columnas es necesario que la matriz auxiliar 
+esté almacenada por columnas (para cargar 8 elementos de una columna con load_ps, tienen que estar consecutivos) 
+en memoria. Sin embargo, este almacenamiento por columnas implica que ya no estamos cargando 8 filas en memoria 
+a la vez, ya que las columnas no están consecutivas en memoria. Por tanto, paso a hacer lo mismo pero por filas, 
+de manera que las copias entre la matriz original y la auxiliar sean más eficientes, al acceder a direcciones 
+de memoria consecutivas en ambas matrices.
+
+Haciendo esto, el tiempo baja a 0.19 segundos.
+
+Si se almacena el resultado en una matriz auxiliar usando las operaciones de avx, y de esa matriz se almacena luego 
+en la final, el tiempo baja a unos 0.18 segundos.
+
+Si se añaden dos columnas extra a los lados de la matriz auxiliar, y se aprovecha eso para tratar las columnas laterales 
+de la imágen (cálculos basura, no los necesitamos), podemos hacer que se trate toda la imágen con operaciones de AVX y no 
+sobren columnas que haya que tratar por separado. El tiempo baja a unos 0.15 segundos.
+
+Se pueden desplegar dos iteraciones de las filas, de forma que en cada iteración se traten 8 columnas y dos filas. El 
+problema de esto es que se utilizan 17 registros, 12 de datos, 2 de kernel, 2 para 0 y 255, y el de acumuladores. Lo ideal 
+sería poder mantener todo en memoria al mismo tiempo, pero aun así el tiempo mejora a unos 0.14 segundos.
+
+

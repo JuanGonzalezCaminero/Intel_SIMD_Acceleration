@@ -3,11 +3,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include "ctimer.h"
 
 
 
-typedef double FLOAT;
-//typedef float FLOAT;
+//typedef double FLOAT;
+typedef float FLOAT;
 
 // Cycle Counter Code
 //
@@ -96,60 +97,61 @@ int main(int argc, char *argv[])
     for (vuelta=1;vuelta<500;vuelta++)
     {
 
-    // Skip first and last row, no neighbors to convolve with
-    for(i=1; i<239; i++)
-    {
-
-        // Skip first and last column, no neighbors to convolve with
-        for(j=1; j<319; j++)
+        // Skip first and last row, no neighbors to convolve with
+        for(i=1; i<239; i++)
         {
-            temp=0;
-            temp += (PSF[0] * (FLOAT)R[((i-1)*320)+j-1]);
-            temp += (PSF[1] * (FLOAT)R[((i-1)*320)+j]);
-            temp += (PSF[2] * (FLOAT)R[((i-1)*320)+j+1]);
-            temp += (PSF[3] * (FLOAT)R[((i)*320)+j-1]);
-            temp += (PSF[4] * (FLOAT)R[((i)*320)+j]);
-            temp += (PSF[5] * (FLOAT)R[((i)*320)+j+1]);
-            temp += (PSF[6] * (FLOAT)R[((i+1)*320)+j-1]);
-            temp += (PSF[7] * (FLOAT)R[((i+1)*320)+j]);
-            temp += (PSF[8] * (FLOAT)R[((i+1)*320)+j+1]);
-	    if(temp<0.0) temp=0.0;
-	    if(temp>255.0) temp=255.0;
-	    convR[(i*320)+j]=(UINT8)temp;
 
-            temp=0;
-            temp += (PSF[0] * (FLOAT)G[((i-1)*320)+j-1]);
-            temp += (PSF[1] * (FLOAT)G[((i-1)*320)+j]);
-            temp += (PSF[2] * (FLOAT)G[((i-1)*320)+j+1]);
-            temp += (PSF[3] * (FLOAT)G[((i)*320)+j-1]);
-            temp += (PSF[4] * (FLOAT)G[((i)*320)+j]);
-            temp += (PSF[5] * (FLOAT)G[((i)*320)+j+1]);
-            temp += (PSF[6] * (FLOAT)G[((i+1)*320)+j-1]);
-            temp += (PSF[7] * (FLOAT)G[((i+1)*320)+j]);
-            temp += (PSF[8] * (FLOAT)G[((i+1)*320)+j+1]);
-	    if(temp<0.0) temp=0.0;
-	    if(temp>255.0) temp=255.0;
-	    convG[(i*320)+j]=(UINT8)temp;
+            // Skip first and last column, no neighbors to convolve with
+            for(j=1; j<319; j++)
+            {
+                temp=0;
+                temp += (PSF[0] * (FLOAT)R[((i-1)*320)+j-1]);
+                temp += (PSF[1] * (FLOAT)R[((i-1)*320)+j]);
+                temp += (PSF[2] * (FLOAT)R[((i-1)*320)+j+1]);
+                temp += (PSF[3] * (FLOAT)R[((i)*320)+j-1]);
+                temp += (PSF[4] * (FLOAT)R[((i)*320)+j]);
+                temp += (PSF[5] * (FLOAT)R[((i)*320)+j+1]);
+                temp += (PSF[6] * (FLOAT)R[((i+1)*320)+j-1]);
+                temp += (PSF[7] * (FLOAT)R[((i+1)*320)+j]);
+                temp += (PSF[8] * (FLOAT)R[((i+1)*320)+j+1]);
+    	    if(temp<0.0) temp=0.0;
+    	    if(temp>255.0) temp=255.0;
+    	    convR[(i*320)+j]=(UINT8)temp;
 
-            temp=0;
-            temp += (PSF[0] * (FLOAT)B[((i-1)*320)+j-1]);
-            temp += (PSF[1] * (FLOAT)B[((i-1)*320)+j]);
-            temp += (PSF[2] * (FLOAT)B[((i-1)*320)+j+1]);
-            temp += (PSF[3] * (FLOAT)B[((i)*320)+j-1]);
-            temp += (PSF[4] * (FLOAT)B[((i)*320)+j]);
-            temp += (PSF[5] * (FLOAT)B[((i)*320)+j+1]);
-            temp += (PSF[6] * (FLOAT)B[((i+1)*320)+j-1]);
-            temp += (PSF[7] * (FLOAT)B[((i+1)*320)+j]);
-            temp += (PSF[8] * (FLOAT)B[((i+1)*320)+j+1]);
-	    if(temp<0.0) temp=0.0;
-	    if(temp>255.0) temp=255.0;
-	    convB[(i*320)+j]=(UINT8)temp;
+                temp=0;
+                temp += (PSF[0] * (FLOAT)G[((i-1)*320)+j-1]);
+                temp += (PSF[1] * (FLOAT)G[((i-1)*320)+j]);
+                temp += (PSF[2] * (FLOAT)G[((i-1)*320)+j+1]);
+                temp += (PSF[3] * (FLOAT)G[((i)*320)+j-1]);
+                temp += (PSF[4] * (FLOAT)G[((i)*320)+j]);
+                temp += (PSF[5] * (FLOAT)G[((i)*320)+j+1]);
+                temp += (PSF[6] * (FLOAT)G[((i+1)*320)+j-1]);
+                temp += (PSF[7] * (FLOAT)G[((i+1)*320)+j]);
+                temp += (PSF[8] * (FLOAT)G[((i+1)*320)+j+1]);
+    	    if(temp<0.0) temp=0.0;
+    	    if(temp>255.0) temp=255.0;
+    	    convG[(i*320)+j]=(UINT8)temp;
+
+                temp=0;
+                temp += (PSF[0] * (FLOAT)B[((i-1)*320)+j-1]);
+                temp += (PSF[1] * (FLOAT)B[((i-1)*320)+j]);
+                temp += (PSF[2] * (FLOAT)B[((i-1)*320)+j+1]);
+                temp += (PSF[3] * (FLOAT)B[((i)*320)+j-1]);
+                temp += (PSF[4] * (FLOAT)B[((i)*320)+j]);
+                temp += (PSF[5] * (FLOAT)B[((i)*320)+j+1]);
+                temp += (PSF[6] * (FLOAT)B[((i+1)*320)+j-1]);
+                temp += (PSF[7] * (FLOAT)B[((i+1)*320)+j]);
+                temp += (PSF[8] * (FLOAT)B[((i+1)*320)+j+1]);
+    	    if(temp<0.0) temp=0.0;
+    	    if(temp>255.0) temp=255.0;
+    	    convB[(i*320)+j]=(UINT8)temp;
+            }
         }
     }
-}
 
     // End of convolution time stamp
- ctimer_(&elapsed1, &ucpu1, &scpu1);
+    ctimer_(&elapsed1, &ucpu1, &scpu1);
+
     printf("Tiempo: %fs (real) %fs (cpu) %fs (sys)\n", 
                  elapsed1-elapsed0, ucpu1-ucpu0, scpu1-scpu0);
 

@@ -1,0 +1,107 @@
+for(i=1; i+8<ROWS-1; i+=8)
+{
+    j=1;
+    //Register preload:
+    data[3]=_mm256_load_ps(&R_float[i-1 + (j-1)*ROWS]);
+    data[4]=_mm256_load_ps(&R_float[i + (j-1)*ROWS]);
+    data[5]=_mm256_load_ps(&R_float[i+1 + (j-1)*ROWS]);
+
+    data[6]=_mm256_load_ps(&R_float[i-1 + (j)*ROWS]);
+    data[7]=_mm256_load_ps(&R_float[i + (j)*ROWS]);
+    data[8]=_mm256_load_ps(&R_float[i+1 + (j)*ROWS]);
+
+    //We can reuse the multiplication of data 3, 5, 6, and 8, and we do not need to store the data
+    //itself, only the result:
+    data[3]=_mm256_mul_ps(data[3], k_sides);
+    data[5]=_mm256_mul_ps(data[5], k_sides);
+    data[6]=_mm256_mul_ps(data[6], k_sides);
+    data[8]=_mm256_mul_ps(data[8], k_sides);
+
+
+    // Skip first and last column, no neighbors to convolve with
+    for(j=1; j<COLS-1; j++)
+    {   
+
+        //Initialise accumulators
+        accumulators = _mm256_set1_ps(0);
+
+        //Move data registers to remove first column and make second and third 
+        //represent first and second
+        data[0]=data[3];
+        data[1]=data[4];
+        data[2]=data[5];
+
+        data[3]=data[6];
+        data[4]=data[7];
+        data[5]=data[8];
+
+        //Load data for the last column
+        data[6]=_mm256_load_ps(&R_float[i-1 + (j+1)*ROWS]);
+        data[7]=_mm256_load_ps(&R_float[i + (j+1)*ROWS]);
+        data[8]=_mm256_load_ps(&R_float[i+1 + (j+1)*ROWS]);
+
+        //We can reuse the multiplication of data 6, and 8, and we do not need to store the data
+        //itself, only the result:
+        data[6]=_mm256_mul_ps(data[6], k_sides);
+        data[8]=_mm256_mul_ps(data[8], k_sides);
+
+        //Data 0, 2, 3, 5, 6 and 8 contain the results from a multiplication in this or a 
+        //previous iteration. We only need to compute the multiplications for data 1, 4, and 7, 
+        //since we are multiplying them by a different value than on the previous iteration:
+
+        accumulators = _mm256_add_ps(accumulators, data[0]);
+        accumulators = _mm256_add_ps(accumulators, data[2]);
+        accumulators = _mm256_add_ps(accumulators, data[3]);
+        accumulators = _mm256_add_ps(accumulators, data[5]);
+        accumulators = _mm256_add_ps(accumulators, data[6]);
+        accumulators = _mm256_add_ps(accumulators, data[8]);
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[1], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[4], k_center));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[7], k_sides));
+        
+        /*
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[0], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[1], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[2], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[3], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[4], k_center));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[5], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[6], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[7], k_sides));
+
+        accumulators = _mm256_add_ps(accumulators, _mm256_mul_ps(data[8], k_sides));
+        */
+        
+
+        accumulators = _mm256_min_ps(accumulators, register_255);
+        accumulators = _mm256_max_ps(accumulators, register_0);
+
+        _mm256_store_ps(accumulators_ram, accumulators);
+
+        convR[(i*COLS)+j]=(UINT8)accumulators_ram[0];
+        convR[((i+1)*COLS)+j]=(UINT8)accumulators_ram[1];
+        convR[((i+2)*COLS)+j]=(UINT8)accumulators_ram[2];
+        convR[((i+3)*COLS)+j]=(UINT8)accumulators_ram[3];
+        convR[((i+4)*COLS)+j]=(UINT8)accumulators_ram[4];
+        convR[((i+5)*COLS)+j]=(UINT8)accumulators_ram[5];
+        convR[((i+6)*COLS)+j]=(UINT8)accumulators_ram[6];
+        convR[((i+7)*COLS)+j]=(UINT8)accumulators_ram[7];
+
+        /*
+        convR[(i*COLS)+j]=(UINT8)accumulators[0];
+        convR[((i+1)*COLS)+j]=(UINT8)accumulators[1];
+        convR[((i+2)*COLS)+j]=(UINT8)accumulators[2];
+        convR[((i+3)*COLS)+j]=(UINT8)accumulators[3];
+        */
+    }
+}
